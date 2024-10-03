@@ -1,13 +1,11 @@
+use crate::key_pair::KeyPair;
 use ring::{digest, pbkdf2};
 use sha2::{Digest, Sha256};
 use std::fs;
-use crate::key_pair::KeyPair;
 
 pub struct Wallet {
     pub address: String,
-    pub key_pairs: Vec<KeyPair>
-    // paths: https://github.com/bitcoinbook/bitcoinbook/blob/develop/ch05.asciidoc#hd-wallet-key-identifier-path
-    // pub path: String,
+    pub key_pairs: Vec<KeyPair>,
 }
 
 impl Wallet {
@@ -98,7 +96,7 @@ impl Wallet {
 
     pub fn new(seed: String) -> Wallet {
         let mut public_key_hasher = Sha256::new();
-        
+
         let private_key: String = seed[seed.len() / 2..].to_owned();
         public_key_hasher.update(&private_key);
 
@@ -115,18 +113,17 @@ impl Wallet {
             private_key: private_key.clone(),
             public_key,
             chain_code,
-            index: 0
+            index: 0,
+            path: "m/44'/0'/0'/0/0".to_owned(), // m: master key / 44': BIP44 / 0': coin type (Bitcoin) / 0': account / 0: change / 0: address index
         };
 
-        let mut vec = Vec::new();
-        vec.push(key_pair);
+        let second_key_pair = KeyPair::derive_child(&key_pair, key_pair.index + 1);
 
-        return Wallet {
-            key_pairs: vec,
-            // TODO: addres is derived from public key, that's why in a nondeterministic wallet we
-            // have to use one address per transaction booooo
-            address,
-        };
+        let mut key_pairs = Vec::new();
+        key_pairs.push(key_pair);
+        key_pairs.push(second_key_pair);
+
+        return Wallet { key_pairs, address };
     }
 }
 
@@ -139,8 +136,19 @@ mod tests {
         let mut mnemonic_words: Vec<String> = Vec::new();
         mnemonic_words.push("bla".to_owned());
 
-
-        let input: Vec<char> = ['0', '0', '0', '1', '1', '0', '0', '0', '0', '0', '1', '0', '1', '0', '0', '1', '0', '0', '1', '0', '0', '1', '1', '0', '1', '1', '1', '0', '0', '0', '0', '1', '0', '0', '0', '1', '0', '0', '1', '1', '0', '0', '1', '0', '1', '1', '0', '1', '0', '1', '1', '0', '0', '1', '1', '1', '1', '0', '1', '0', '1', '0', '1', '0', '0', '0', '0', '0', '0', '1', '0', '0', '1', '1', '0', '0', '0', '1', '1', '0', '0', '0', '1', '0', '1', '0', '1', '0', '1', '1', '1', '0', '1', '1', '1', '0', '1', '1', '0', '1', '0', '0', '1', '1', '1', '0', '0', '0', '0', '0', '0', '0', '1', '0', '1', '0', '0', '0', '0', '1', '0', '1', '1', '1', '1', '0', '1', '0'].iter().cloned().collect();
+        let input: Vec<char> = [
+            '0', '0', '0', '1', '1', '0', '0', '0', '0', '0', '1', '0', '1', '0', '0', '1', '0',
+            '0', '1', '0', '0', '1', '1', '0', '1', '1', '1', '0', '0', '0', '0', '1', '0', '0',
+            '0', '1', '0', '0', '1', '1', '0', '0', '1', '0', '1', '1', '0', '1', '0', '1', '1',
+            '0', '0', '1', '1', '1', '1', '0', '1', '0', '1', '0', '1', '0', '0', '0', '0', '0',
+            '0', '1', '0', '0', '1', '1', '0', '0', '0', '1', '1', '0', '0', '0', '1', '0', '1',
+            '0', '1', '0', '1', '1', '1', '0', '1', '1', '1', '0', '1', '1', '0', '1', '0', '0',
+            '1', '1', '1', '0', '0', '0', '0', '0', '0', '0', '1', '0', '1', '0', '0', '0', '0',
+            '1', '0', '1', '1', '1', '1', '0', '1', '0',
+        ]
+        .iter()
+        .cloned()
+        .collect();
 
         let mnemonic_words: Vec<String> = [
             "abandon".to_owned(),
@@ -154,8 +162,11 @@ mod tests {
             "merit".to_owned(),
             "tenant".to_owned(),
             "december".to_owned(),
-            "face".to_owned()
-        ].iter().cloned().collect();
+            "face".to_owned(),
+        ]
+        .iter()
+        .cloned()
+        .collect();
 
         assert_eq!(Wallet::generate_mnemonic_words(input), mnemonic_words);
     }
@@ -174,10 +185,16 @@ mod tests {
             "merit".to_owned(),
             "tenant".to_owned(),
             "december".to_owned(),
-            "face".to_owned()
-        ].iter().cloned().collect();
+            "face".to_owned(),
+        ]
+        .iter()
+        .cloned()
+        .collect();
 
-        assert_eq!(Wallet::generate_seed(mnemonic_words, "superpassword"), "ce313b6a66b6f56fbe7a6bb8d7c84014f3fe7f36f3e768f659ead704a6c");
+        assert_eq!(
+            Wallet::generate_seed(mnemonic_words, "superpassword"),
+            "ce313b6a66b6f56fbe7a6bb8d7c84014f3fe7f36f3e768f659ead704a6c"
+        );
     }
 
     #[test]
@@ -186,11 +203,23 @@ mod tests {
 
         let wallet = Wallet::new(seed.to_owned());
 
-        assert_eq!(wallet.address, "03027CC470BB03D5EBC760B58B242ACD62C188657D0C4199B9704B31AA10471E");
-        assert_eq!(wallet.key_pairs[0].private_key, "014f3fe7f36f3e768f659ead704a6c");
-        assert_eq!(wallet.key_pairs[0].public_key, "1314311DC62A41D39FA733A3E9B3D6C1A2B720D78C6C4BF527556105F746A395");
-        assert_eq!(wallet.key_pairs[0].chain_code, "ce313b6a66b6f56fbe7a6bb8d7c84");
+        assert_eq!(
+            wallet.address,
+            "03027CC470BB03D5EBC760B58B242ACD62C188657D0C4199B9704B31AA10471E"
+        );
+        assert_eq!(
+            wallet.key_pairs[0].private_key,
+            "014f3fe7f36f3e768f659ead704a6c"
+        );
+        assert_eq!(
+            wallet.key_pairs[0].public_key,
+            "1314311DC62A41D39FA733A3E9B3D6C1A2B720D78C6C4BF527556105F746A395"
+        );
+        assert_eq!(
+            wallet.key_pairs[0].chain_code,
+            "ce313b6a66b6f56fbe7a6bb8d7c84"
+        );
         assert_eq!(wallet.key_pairs[0].index, 0);
+        assert_eq!(wallet.key_pairs[0].path, "m/44'/0'/0'/0/0");
     }
-
 }

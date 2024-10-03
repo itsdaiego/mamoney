@@ -1,6 +1,6 @@
+use mawallet::key_pair::KeyPair;
 use mawallet::wallet::Wallet;
 use rand::{thread_rng, Rng};
-use mawallet::key_pair::KeyPair;
 
 fn main() {
     let mut sequence_vec: Vec<char> = Vec::new();
@@ -25,17 +25,21 @@ fn main() {
     let parent_key_pair = wallet.key_pairs.last().unwrap();
     let new_index = parent_key_pair.index + 1;
 
-    let key_pair = KeyPair::derive_child(parent_key_pair.private_key.clone(), parent_key_pair.chain_code.clone(), new_index);
+    let key_pair = KeyPair::derive_child(parent_key_pair, new_index);
 
     wallet.key_pairs.push(key_pair);
 
-    // super safe stuff amiright
-    println!("wallet address {}", wallet.address);
+    println!(
+        "wallet address {} {}",
+        wallet.address,
+        wallet.key_pairs.len()
+    );
 
-    for key_pair in wallet.key_pairs  {
+    for key_pair in wallet.key_pairs {
         println!("---------------------");
         println!("wallet pub key {}", key_pair.public_key);
         println!("wallet pub key {}", key_pair.private_key);
         println!("wallet chain code {}", key_pair.chain_code);
+        println!("wallet path {}", key_pair.path);
     }
 }
